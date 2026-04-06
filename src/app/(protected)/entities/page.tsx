@@ -13,6 +13,7 @@ import {
   type CrudColumn,
   type CrudRowAction,
 } from "@/components/crud-list";
+import { toast } from "@/hooks/use-toast";
 
 type FormData = {
   name: string;
@@ -30,10 +31,14 @@ export default function EntitiesPage() {
   const [items, setItems] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(initialForm);
+
+  const [entityToDelete, setEntityToDelete] = useState<Entity | null>(null);
 
   async function loadEntities() {
     try {
@@ -57,6 +62,10 @@ export default function EntitiesPage() {
     setForm(initialForm);
   }
 
+  function clearError() {
+    setError(null);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -70,7 +79,7 @@ export default function EntitiesPage() {
 
     try {
       setSaving(true);
-      setError(null);
+      clearError();
 
       if (editingId) {
         await entitiesService.update(editingId, {
@@ -78,42 +87,68 @@ export default function EntitiesPage() {
           description: description || undefined,
           status: form.status,
         });
+
+        toast.success(`Entity "${name}" actualizada correctamente.`);
       } else {
         await entitiesService.create({
           name,
           description: description || undefined,
           status: form.status,
         });
+
+        toast.success(`Entity "${name}" creada correctamente.`);
       }
 
       resetForm();
       await loadEntities();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar entity.");
+      const message =
+        err instanceof Error ? err.message : "Error al guardar entity.";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(item: Entity) {
-    const confirmed = window.confirm(`¿Eliminar "${item.name}"?`);
-    if (!confirmed) return;
+  function requestDelete(item: Entity) {
+    clearError();
+    setEntityToDelete(item);
+  }
+
+  function cancelDelete() {
+    setEntityToDelete(null);
+  }
+
+  async function confirmDelete() {
+    if (!entityToDelete) return;
 
     try {
-      setError(null);
-      await entitiesService.remove(item.id);
+      setDeletingId(entityToDelete.id);
+      clearError();
 
-      if (editingId === item.id) {
+      await entitiesService.remove(entityToDelete.id);
+
+      if (editingId === entityToDelete.id) {
         resetForm();
       }
 
+      toast.success(`Entity "${entityToDelete.name}" eliminada correctamente.`);
+
+      setEntityToDelete(null);
       await loadEntities();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al eliminar entity.");
+      const message =
+        err instanceof Error ? err.message : "Error al eliminar entity.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setDeletingId(null);
     }
   }
 
   function handleEdit(item: Entity) {
+    clearError();
     setEditingId(item.id);
     setForm({
       name: item.name,
@@ -150,9 +185,9 @@ export default function EntitiesPage() {
     },
     {
       key: "delete",
-      label: "Eliminar",
+      label: deletingId ? "Eliminando..." : "Eliminar",
       variant: "destructive",
-      onClick: handleDelete,
+      onClick: requestDelete,
     },
   ];
 
@@ -171,6 +206,47 @@ export default function EntitiesPage() {
           Ir a búsqueda
         </Link>
       </div>
+
+      {error ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {entityToDelete ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-destructive">
+                Confirmar eliminación
+              </p>
+              <p className="text-sm text-foreground">
+                ¿Eliminar <span className="font-medium">"{entityToDelete.name}"</span>?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deletingId === entityToDelete.id}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {deletingId === entityToDelete.id ? "Eliminando..." : "Aceptar"}
+              </button>
+
+              <button
+                type="button"
+                onClick={cancelDelete}
+                disabled={deletingId === entityToDelete.id}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="mb-4">
@@ -253,7 +329,10 @@ export default function EntitiesPage() {
 
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => {
+                clearError();
+                resetForm();
+              }}
               disabled={saving}
               className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
             >
@@ -262,12 +341,6 @@ export default function EntitiesPage() {
           </div>
         </form>
       </div>
-
-      {error ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
 
       <CrudList
         items={items}
