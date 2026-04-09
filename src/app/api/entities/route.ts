@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { EntityStatus } from "@/modules/entities/types";
+import { createEntitySchema } from "@/modules/entities/schemas";
 import { ENTITY_SELECT, EntityRow, mapEntityRow } from "./_lib";
 
 // GET /api/entities
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("entities")
     .select(ENTITY_SELECT)
-    .eq("user_id", user.id)   // explicit scope — defense in depth on top of RLS
+    .eq("user_id", user.id) // explicit scope — defense in depth on top of RLS
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
@@ -60,13 +60,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const body: { name?: string; description?: string | null; status?: EntityStatus } =
-    await request.json().catch(() => ({}));
-
-  const name = body.name?.trim();
-  if (!name) {
-    return NextResponse.json({ error: "El nombre es obligatorio." }, { status: 422 });
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "El cuerpo de la solicitud no es JSON válido." },
+      { status: 422 }
+    );
   }
+
+  const parsed = createEntitySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Datos inválidos.";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
+
+  const { name, description, status } = parsed.data;
 
   // Uniqueness check explicitly scoped to this user — not relying solely on RLS
   const { data: existing } = await supabase
@@ -89,8 +99,8 @@ export async function POST(request: NextRequest) {
     .insert({
       user_id: user.id,
       name,
-      description: body.description?.trim() || null,
-      status: body.status ?? "active",
+      description: description ?? null,
+      status: status ?? "active",
     })
     .select(ENTITY_SELECT)
     .single();

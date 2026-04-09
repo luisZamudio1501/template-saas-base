@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { EntityStatus } from "@/modules/entities/types";
+import { updateEntitySchema } from "@/modules/entities/schemas";
 import { ENTITY_SELECT, EntityRow, mapEntityRow } from "../_lib";
 
 // GET /api/entities/[id]
@@ -55,29 +55,33 @@ export async function PATCH(
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const body: {
-    name?: string;
-    description?: string | null;
-    status?: EntityStatus;
-  } = await request.json().catch(() => ({}));
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "El cuerpo de la solicitud no es JSON válido." },
+      { status: 422 }
+    );
+  }
 
+  const parsed = updateEntitySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Datos inválidos.";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
+
+  const body = parsed.data;
   const payload: Record<string, unknown> = {};
 
   if (body.name !== undefined) {
-    const name = body.name.trim();
-    if (!name) {
-      return NextResponse.json(
-        { error: "El nombre no puede estar vacío." },
-        { status: 422 }
-      );
-    }
-
-    // Uniqueness check scoped to user, excluding the record being updated
+    // body.name is already trimmed and validated (min 1) by the schema.
+    // Uniqueness check scoped to user, excluding the record being updated.
     const { data: existing } = await supabase
       .from("entities")
       .select("id")
       .eq("user_id", user.id)
-      .ilike("name", name)
+      .ilike("name", body.name)
       .is("deleted_at", null)
       .neq("id", id)
       .limit(1);
@@ -89,11 +93,12 @@ export async function PATCH(
       );
     }
 
-    payload.name = name;
+    payload.name = body.name;
   }
 
   if (body.description !== undefined) {
-    payload.description = body.description?.trim() || null;
+    // body.description is already trimmed; convert empty string to null.
+    payload.description = body.description || null;
   }
 
   if (body.status !== undefined) {

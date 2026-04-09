@@ -58,21 +58,30 @@ export async function middleware(request: NextRequest) {
 }
 
 /**
- * matcher must be a static literal — Next.js evaluates it at build time
- * and cannot import from external modules.
+ * WHY A BROAD MATCHER INSTEAD OF A PER-ROUTE LIST:
  *
- * Keep in sync with protectedRoutes and authRoutes in src/config/routes.ts.
- * Add a new entry here whenever you add a path to protectedRoutes.
+ * Next.js evaluates config.matcher at build time using a static analysis pass
+ * (Edge Runtime constraint). It cannot import from external modules, so the
+ * old approach required manually adding each new route to BOTH this array AND
+ * src/config/routes.ts — a silent security risk when the two drifted apart.
+ *
+ * The broad pattern below runs the middleware on every request EXCEPT Next.js
+ * internals and static assets. All routing decisions (protect / redirect) are
+ * made at runtime by reading protectedRoutes and authRoutes from
+ * src/config/routes.ts, which is now the single source of truth.
+ *
+ * HOW TO ADD A NEW PROTECTED ROUTE:
+ *   1. Add the base path to protectedRoutes in src/config/routes.ts.
+ *   2. Add the nav item to appConfig.navigation in src/config/app.ts.
+ *   ← That's it. No changes to this file are needed.
+ *
+ * LIMITATION: the matcher regex below is the only thing that must stay here.
+ * It intentionally excludes _next/static, _next/image, and favicon.ico so the
+ * middleware does not run on build artifacts. Do not make it more restrictive
+ * or the session-refresh logic will stop working for new routes.
  */
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/entities/:path*",
-    "/settings/:path*",
-    "/me/:path*",
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/update-password",
+    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -1,20 +1,10 @@
 import { useEffect, useState } from "react";
-import { z } from "zod";
 import { entitiesService } from "../service";
 import { Entity } from "../types";
+import { entityFormSchema, type EntityFormValues } from "../schemas";
 import { toast } from "@/hooks/use-toast";
 
-// ---------------------------------------------------------------------------
-// Schema — single source of truth for form shape and validation messages.
-// Shared by the hook (validation) and the form component (field types).
-// ---------------------------------------------------------------------------
-export const entityFormSchema = z.object({
-  name: z.string().min(1, "El nombre es obligatorio."),
-  description: z.string().default(""),
-  status: z.enum(["active", "inactive"]).default("active"),
-});
-
-export type EntityFormValues = z.infer<typeof entityFormSchema>;
+export type { EntityFormValues };
 
 // ---------------------------------------------------------------------------
 // Internals
