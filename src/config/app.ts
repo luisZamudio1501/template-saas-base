@@ -11,6 +11,8 @@
 export type AppFeatures = {
   /** CRUD module used as the base pattern. Disable when building a fresh domain. */
   entities: boolean;
+  /** Billing module — Stripe checkout, portal, and subscription management. */
+  billing: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -55,14 +57,17 @@ export const appConfig: AppConfig = {
     { label: "Dashboard", href: "/dashboard" },
     { label: "Entities", href: "/entities", exact: true, feature: "entities" },
     { label: "Buscar", href: "/entities/search", feature: "entities" },
-    { label: "Settings", href: "/settings" },
+    { label: "Billing", href: "/settings/billing", feature: "billing" },
+    { label: "Settings", href: "/settings", exact: true },
   ],
 
   publicNavigation: [
     { label: "Inicio", href: "/" },
+    { label: "Precios", href: "/pricing" },
   ],
 
   features: {
     entities: true,
+    billing: true,
   },
 };
