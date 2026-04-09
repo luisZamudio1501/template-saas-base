@@ -14,7 +14,8 @@
       "Bash(node -e \"const pkg = require\\('C:/PROYECTOS/template-saas-base/node_modules/stripe/package.json'\\); console.log\\(pkg.version\\)\")",
       "Bash(sed -n '685,710p' \"C:/PROYECTOS/template-saas-base/node_modules/stripe/cjs/resources/Events.d.ts\")",
       "Bash(sed -n '1010,1040p' \"C:/PROYECTOS/template-saas-base/node_modules/stripe/cjs/resources/Events.d.ts\")",
-      "Bash(sed -n '1517,1535p' \"C:/PROYECTOS/template-saas-base/node_modules/stripe/cjs/resources/Events.d.ts\")"
+      "Bash(sed -n '1517,1535p' \"C:/PROYECTOS/template-saas-base/node_modules/stripe/cjs/resources/Events.d.ts\")",
+      "Bash(node scripts/generate-module.mjs --name tickets --label \"Tickets\")"
     ]
   }
 }
