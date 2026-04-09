@@ -22,8 +22,8 @@ export default function ForgotPasswordPage() {
       await authService.resetPassword(email);
 
       setMessage("Revisá tu email para continuar con el reseteo de contraseña.");
-    } catch (err: any) {
-      setError(err.message || "Error al enviar el email de recuperación");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al enviar el email de recuperación");
     } finally {
       setLoading(false);
     }

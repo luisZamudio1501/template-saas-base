@@ -1,168 +1,88 @@
-import { supabase } from "@/lib/supabase";
+// Client-side service for the entities module.
+// All Supabase access happens server-side via Route Handlers.
+// This service only talks to /api/entities over HTTP — zero DB coupling in the browser.
+
 import {
   Entity,
   CreateEntityInput,
   UpdateEntityInput,
   EntityFilters,
-  EntityStatus,
 } from "./types";
 
-type EntityRow = {
-  id: string;
-  name: string;
-  description: string | null;
-  status: EntityStatus;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-};
-
-function mapRow(row: EntityRow): Entity {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    status: row.status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-  };
+// Internal error class that preserves the HTTP status so callers
+// can distinguish 404 (not found) from 5xx (unexpected failure).
+class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
-async function validateUniqueName(name: string, excludeId?: string): Promise<void> {
-  const normalizedName = name.trim();
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
 
-  let query = supabase
-    .from("entities")
-    .select("id, name")
-    .ilike("name", normalizedName)
-    .is("deleted_at", null)
-    .limit(1);
+  // 204 No Content (used by DELETE) — return undefined, not JSON
+  if (response.status === 204) return undefined as T;
 
-  if (excludeId) {
-    query = query.neq("id", excludeId);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(
+      response.status,
+      body.error ?? `Error ${response.status}`
+    );
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (data && data.length > 0) {
-    throw new Error("Ya existe una entity con ese nombre.");
-  }
+  return response.json() as Promise<T>;
 }
 
 export const entitiesService = {
   async getAll(filters?: EntityFilters): Promise<Entity[]> {
-    let query = supabase
-      .from("entities")
-      .select("id, name, description, status, created_at, updated_at, deleted_at")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+    const params = new URLSearchParams();
 
     const search = filters?.search?.trim();
-    const status = filters?.status;
+    if (search) params.set("search", search);
 
-    if (search) {
-      query = query.ilike("name", `%${search}%`);
+    // "all" means no status filter — only forward concrete values
+    if (filters?.status && filters.status !== "all") {
+      params.set("status", filters.status);
     }
 
-    if (status && status !== "all") {
-      query = query.eq("status", status);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return (data ?? []).map(mapRow);
+    const qs = params.toString();
+    return apiFetch<Entity[]>(`/api/entities${qs ? `?${qs}` : ""}`);
   },
 
   async getById(id: string): Promise<Entity | null> {
-    const { data, error } = await supabase
-      .from("entities")
-      .select("id, name, description, status, created_at, updated_at, deleted_at")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-
-    if (error) {
-      if (error.code === "PGRST116") {
-        return null;
-      }
-      throw new Error(error.message);
+    try {
+      return await apiFetch<Entity>(`/api/entities/${id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
     }
-
-    return mapRow(data as EntityRow);
   },
 
   async create(input: CreateEntityInput): Promise<Entity> {
-    const name = input.name.trim();
-
-    await validateUniqueName(name);
-
-    const { data, error } = await supabase
-      .from("entities")
-      .insert({
-        name,
-        description: input.description?.trim() || null,
-        status: input.status ?? "active",
-      })
-      .select("id, name, description, status, created_at, updated_at, deleted_at")
-      .single();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return mapRow(data as EntityRow);
+    return apiFetch<Entity>("/api/entities", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   },
 
   async update(id: string, input: UpdateEntityInput): Promise<Entity> {
-    const payload: Record<string, unknown> = {};
-
-    if (input.name !== undefined) {
-      const name = input.name.trim();
-      await validateUniqueName(name, id);
-      payload.name = name;
-    }
-
-    if (input.description !== undefined) {
-      payload.description = input.description.trim() || null;
-    }
-
-    if (input.status !== undefined) {
-      payload.status = input.status;
-    }
-
-    const { data, error } = await supabase
-      .from("entities")
-      .update(payload)
-      .eq("id", id)
-      .is("deleted_at", null)
-      .select("id, name, description, status, created_at, updated_at, deleted_at")
-      .single();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return mapRow(data as EntityRow);
+    return apiFetch<Entity>(`/api/entities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
   },
 
   async remove(id: string): Promise<void> {
-    const { error } = await supabase
-      .from("entities")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await apiFetch<void>(`/api/entities/${id}`, {
+      method: "DELETE",
+    });
   },
 };

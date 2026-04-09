@@ -1,15 +1,15 @@
 import Link from "next/link";
+import { appConfig } from "@/config/app";
 
 export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <h1 className="text-4xl font-bold tracking-tight text-sidebar-foreground">
-        Template Base V1
+        {appConfig.appName}
       </h1>
 
       <p className="mt-4 max-w-md text-base text-sidebar-foreground/60">
-        Base reutilizable para construir aplicaciones SaaS. Incluye autenticación,
-        layout protegido, módulos CRUD y sistema de notificaciones.
+        {appConfig.appDescription}
       </p>
 
       <div className="mt-10 flex gap-4">

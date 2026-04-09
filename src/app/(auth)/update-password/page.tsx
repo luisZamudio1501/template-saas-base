@@ -69,8 +69,8 @@ export default function UpdatePasswordPage() {
 
       setMessage("Contraseña actualizada correctamente. Podés iniciar sesión.");
       setTimeout(() => router.push("/login"), 2000);
-    } catch (err: any) {
-      setError(err.message || "Error al actualizar la contraseña.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al actualizar la contraseña.");
     } finally {
       setLoading(false);
     }

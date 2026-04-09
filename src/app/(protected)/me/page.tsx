@@ -2,21 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { authService, Usuario } from "@/modules/auth";
+import { authService } from "@/modules/auth";
+import type { User } from "@/modules/auth/types";
 
 export default function MePage() {
-  const [user, setUser] = useState<Usuario | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadUser();
+    authService.getCurrentUser().then((u) => {
+      setUser(u);
+      setLoading(false);
+    });
   }, []);
-
-  async function loadUser() {
-    const currentUser = await authService.getCurrentUser();
-    setUser(currentUser);
-    setLoading(false);
-  }
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
@@ -31,7 +29,7 @@ export default function MePage() {
             <p><strong>Email:</strong> {user.email}</p>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No hay usuario logueado</p>
+          <p className="text-sm text-muted-foreground">No hay usuario logueado.</p>
         )}
       </div>
 

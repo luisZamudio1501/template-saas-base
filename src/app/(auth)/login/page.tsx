@@ -31,8 +31,8 @@ export default function LoginPage() {
       await authService.login(email, password);
 
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Error en login");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error en login");
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,9 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "Bash(npx shadcn@latest init)",
-      "Bash(printf \"y\\\\ny\\\\n\")"
+      "Bash(printf \"y\\\\ny\\\\n\")",
+      "Bash(npx tsc:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

@@ -1,13 +1,37 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { entitiesService } from "../service";
 import { Entity } from "../types";
 import { toast } from "@/hooks/use-toast";
 
-export interface EntityFormValues {
-  name: string;
-  description: string;
+// ---------------------------------------------------------------------------
+// Schema — single source of truth for form shape and validation messages.
+// Shared by the hook (validation) and the form component (field types).
+// ---------------------------------------------------------------------------
+export const entityFormSchema = z.object({
+  name: z.string().min(1, "El nombre es obligatorio."),
+  description: z.string().default(""),
+  status: z.enum(["active", "inactive"]).default("active"),
+});
+
+export type EntityFormValues = z.infer<typeof entityFormSchema>;
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+const EMPTY_VALUES: EntityFormValues = { name: "", description: "", status: "active" };
+
+function toFormValues(entity?: Entity): EntityFormValues {
+  return {
+    name: entity?.name ?? "",
+    description: entity?.description ?? "",
+    status: entity?.status ?? "active",
+  };
 }
 
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 interface UseEntityFormOptions {
   initialValues?: Entity;
   onSuccess?: (entity: Entity) => void;
@@ -24,15 +48,6 @@ interface UseEntityFormReturn {
   reset: () => void;
 }
 
-const EMPTY_VALUES: EntityFormValues = { name: "", description: "" };
-
-function toFormValues(entity?: Entity): EntityFormValues {
-  return {
-    name: entity?.name ?? "",
-    description: entity?.description ?? "",
-  };
-}
-
 export function useEntityForm(options: UseEntityFormOptions): UseEntityFormReturn {
   const { initialValues, onSuccess } = options;
 
@@ -43,11 +58,16 @@ export function useEntityForm(options: UseEntityFormOptions): UseEntityFormRetur
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Re-populate the form when the target entity changes (identified by ID).
+  // We intentionally depend on the ID only — changes to individual fields while
+  // editing should not reset the form mid-edit.
+  const entityId = initialValues?.id;
   useEffect(() => {
     setValues(toFormValues(initialValues));
     setError(null);
     setValidationError(null);
-  }, [initialValues?.id ?? null]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
 
   function setField<K extends keyof EntityFormValues>(key: K, value: EntityFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -55,53 +75,53 @@ export function useEntityForm(options: UseEntityFormOptions): UseEntityFormRetur
   }
 
   function reset() {
-    setValues(isEditing ? toFormValues(initialValues) : EMPTY_VALUES);
+    setValues(EMPTY_VALUES);
     setError(null);
     setValidationError(null);
   }
 
   async function submit() {
-    if (!values.name.trim()) {
-      setValidationError("Name is required");
+    const parsed = entityFormSchema.safeParse(values);
+
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      setValidationError(first?.message ?? "Error de validación.");
       return;
     }
+
+    const { name, description, status } = parsed.data;
 
     setLoading(true);
     setError(null);
 
     try {
-      let result: Entity;
+      let saved: Entity;
 
       if (isEditing && initialValues) {
-        result = await entitiesService.update(initialValues.id, {
-          name: values.name.trim(),
-          description: values.description.trim() || null,
+        saved = await entitiesService.update(initialValues.id, {
+          name,
+          description: description || null,
+          status,
         });
       } else {
-        result = await entitiesService.create({
-          name: values.name.trim(),
-          description: values.description.trim() || null,
+        saved = await entitiesService.create({
+          name,
+          description: description || null,
+          status,
         });
         setValues(EMPTY_VALUES);
       }
 
-      toast.success(isEditing ? "Entidad actualizada correctamente." : "Entidad creada correctamente.");
-      onSuccess?.(result);
+      toast.success(
+        isEditing ? "Entidad actualizada correctamente." : "Entidad creada correctamente."
+      );
+      onSuccess?.(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error saving entity");
+      setError(err instanceof Error ? err.message : "Error al guardar la entidad.");
     } finally {
       setLoading(false);
     }
   }
 
-  return {
-    values,
-    loading,
-    error,
-    validationError,
-    isEditing,
-    setField,
-    submit,
-    reset,
-  };
+  return { values, loading, error, validationError, isEditing, setField, submit, reset };
 }

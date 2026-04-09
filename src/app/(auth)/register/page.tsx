@@ -30,8 +30,8 @@ export default function RegisterPage() {
       } else {
         setMessage("Cuenta creada correctamente. Revisá tu email y confirmá tu cuenta antes de ingresar.");
       }
-    } catch (err: any) {
-      setError(err.message || "Error en registro");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error en registro");
     } finally {
       setLoading(false);
     }
