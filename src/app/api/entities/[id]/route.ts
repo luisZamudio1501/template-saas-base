@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { updateEntitySchema } from "@/modules/entities/schemas";
-import { ENTITY_SELECT, EntityRow, mapEntityRow } from "../_lib";
+import * as EntityRepository from "@/modules/entities/repository";
 
 // GET /api/entities/[id]
 export async function GET(
@@ -20,22 +20,16 @@ export async function GET(
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const { data, error } = await supabase
-    .from("entities")
-    .select(ENTITY_SELECT)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") {
+  try {
+    const entity = await EntityRepository.findByIdForUser(id, user.id);
+    if (!entity) {
       return NextResponse.json({ error: "Entity no encontrada." }, { status: 404 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(entity);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno del servidor.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json(mapEntityRow(data as EntityRow));
 }
 
 // PATCH /api/entities/[id]
@@ -71,57 +65,30 @@ export async function PATCH(
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
-  const body = parsed.data;
-  const payload: Record<string, unknown> = {};
-
-  if (body.name !== undefined) {
-    // body.name is already trimmed and validated (min 1) by the schema.
-    // Uniqueness check scoped to user, excluding the record being updated.
-    const { data: existing } = await supabase
-      .from("entities")
-      .select("id")
-      .eq("user_id", user.id)
-      .ilike("name", body.name)
-      .is("deleted_at", null)
-      .neq("id", id)
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      return NextResponse.json(
-        { error: "Ya existe una entity con ese nombre." },
-        { status: 422 }
+  try {
+    if (parsed.data.name !== undefined) {
+      const nameExists = await EntityRepository.findByNameForUser(
+        parsed.data.name,
+        user.id,
+        id
       );
+      if (nameExists) {
+        return NextResponse.json(
+          { error: "Ya existe una entity con ese nombre." },
+          { status: 422 }
+        );
+      }
     }
 
-    payload.name = body.name;
-  }
-
-  if (body.description !== undefined) {
-    // body.description is already trimmed; convert empty string to null.
-    payload.description = body.description || null;
-  }
-
-  if (body.status !== undefined) {
-    payload.status = body.status;
-  }
-
-  const { data, error } = await supabase
-    .from("entities")
-    .update(payload)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .select(ENTITY_SELECT)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") {
+    const entity = await EntityRepository.updateForUser(id, user.id, parsed.data);
+    if (!entity) {
       return NextResponse.json({ error: "Entity no encontrada." }, { status: 404 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(entity);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno del servidor.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json(mapEntityRow(data as EntityRow));
 }
 
 // DELETE /api/entities/[id] — soft delete only, never hard delete
@@ -141,16 +108,11 @@ export async function DELETE(
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const { error } = await supabase
-    .from("entities")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .is("deleted_at", null);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    await EntityRepository.softDeleteForUser(id, user.id);
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno del servidor.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return new NextResponse(null, { status: 204 });
 }

@@ -6,7 +6,10 @@
       "Bash(npx shadcn@latest init)",
       "Bash(printf \"y\\\\ny\\\\n\")",
       "Bash(npx tsc:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(xargs wc:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(npx next:*)"
     ]
   }
 }

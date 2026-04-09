@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createEntitySchema } from "@/modules/entities/schemas";
-import { ENTITY_SELECT, EntityRow, mapEntityRow } from "./_lib";
+import * as EntityRepository from "@/modules/entities/repository";
 
 // GET /api/entities
 // Query params: search (string), status ("active" | "inactive")
@@ -18,33 +18,16 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = request.nextUrl;
-  const search = searchParams.get("search")?.trim();
-  const status = searchParams.get("status");
+  const search = searchParams.get("search")?.trim() || undefined;
+  const status = searchParams.get("status") || undefined;
 
-  let query = supabase
-    .from("entities")
-    .select(ENTITY_SELECT)
-    .eq("user_id", user.id) // explicit scope — defense in depth on top of RLS
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
-  if (search) {
-    query = query.ilike("name", `%${search}%`);
+  try {
+    const entities = await EntityRepository.findAllByUser(user.id, { search, status: status as "active" | "inactive" | undefined });
+    return NextResponse.json(entities);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno del servidor.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // status is already scoped to "active" | "inactive" by the client service.
-  // "all" is never forwarded, so any value here is a concrete filter.
-  if (status) {
-    query = query.eq("status", status);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json((data as EntityRow[]).map(mapEntityRow));
 }
 
 // POST /api/entities
@@ -76,38 +59,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
-  const { name, description, status } = parsed.data;
+  try {
+    const nameExists = await EntityRepository.findByNameForUser(parsed.data.name, user.id);
+    if (nameExists) {
+      return NextResponse.json(
+        { error: "Ya existe una entity con ese nombre." },
+        { status: 422 }
+      );
+    }
 
-  // Uniqueness check explicitly scoped to this user — not relying solely on RLS
-  const { data: existing } = await supabase
-    .from("entities")
-    .select("id")
-    .eq("user_id", user.id)
-    .ilike("name", name)
-    .is("deleted_at", null)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    return NextResponse.json(
-      { error: "Ya existe una entity con ese nombre." },
-      { status: 422 }
-    );
+    const entity = await EntityRepository.createForUser(user.id, parsed.data);
+    return NextResponse.json(entity, { status: 201 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error interno del servidor.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("entities")
-    .insert({
-      user_id: user.id,
-      name,
-      description: description ?? null,
-      status: status ?? "active",
-    })
-    .select(ENTITY_SELECT)
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(mapEntityRow(data as EntityRow), { status: 201 });
 }
